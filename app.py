@@ -1,21 +1,28 @@
 import streamlit as st
 import json
 import os
-from dotenv import load_dotenv
 from google import genai
 
 # 1. Налаштування сторінки
 st.set_page_config(page_title="Dellini 2.0 | Night Wolves", page_icon="🐺")
 
-# 2. Завантаження ключа API
-load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY")
+# 2. Отримання ключа API (Виправлено для Streamlit Cloud та Локалу)
+# Спочатку шукаємо в Secrets (для хмари), потім в оточенні (для локалу)
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+elif os.getenv("GOOGLE_API_KEY"):
+    api_key = os.getenv("GOOGLE_API_KEY")
+else:
+    api_key = None
 
 # Ініціалізація клієнта Gemini
 if api_key:
-    client = genai.Client(api_key=api_key)
+    try:
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        st.error(f"Помилка ініціалізації ШІ: {e}")
 else:
-    st.error("Помилка: GOOGLE_API_KEY не знайдено у файлі .env")
+    st.error("Помилка: GOOGLE_API_KEY не знайдено в Secrets або .env")
 
 # 3. Функція для роботи з базою знань
 def load_kb():
@@ -60,15 +67,18 @@ if prompt := st.chat_input("Напиши повідомлення..."):
             response_text = custom_response
         else:
             # Якщо в базі немає — запитуємо у Gemini
-            try:
-                sys_instr = "Ти Dellini, створений Night Wolves. Творець — Fyn8zrox2. Допомагай команді чітко і стильно."
-                response = client.models.generate_content(
-                    model="gemini-1.5-flash",
-                    contents=f"{sys_instr}\nКористувач: {prompt}"
-                )
-                response_text = response.text
-            except Exception as e:
-                response_text = "Вибачте, сталася помилка з'єднання з ШІ. Перевірте API ключ."
+            if api_key:
+                try:
+                    sys_instr = "Ти Dellini, створений Night Wolves. Творець — Fyn8zrox2. Допомагай команді чітко і стильно."
+                    response = client.models.generate_content(
+                        model="gemini-1.5-flash",
+                        contents=f"{sys_instr}\nКористувач: {prompt}"
+                    )
+                    response_text = response.text
+                except Exception as e:
+                    response_text = f"Вибачте, сталася помилка з'єднання з ШІ: {e}"
+            else:
+                response_text = "ШІ недоступний (відсутній ключ API)."
         
         st.markdown(response_text)
         st.session_state.messages.append({"role": "assistant", "content": response_text})
